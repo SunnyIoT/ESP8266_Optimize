@@ -287,6 +287,9 @@ void loop() {
 
       if (timer >= 1000) {
         microgear.chat(html_alias, json1);
+        Serial.print("heap : ");
+        Serial.println(Esp.getFreeHeap());
+        json1 = "\0";
         timer = 0;
       } else {
         process_realtime();
