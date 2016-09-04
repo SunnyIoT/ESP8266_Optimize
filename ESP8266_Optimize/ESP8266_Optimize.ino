@@ -224,6 +224,29 @@ void receiver_data_website() {
   start_new = 0;
 }
 
+void send_datalogger() {
+  String url = "/laravel/public/device_lost_connect/";
+  url += ALIAS;
+
+  Serial.print("Requesting URL: ");
+  Serial.println(url);
+
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n\r\n");
+  unsigned long timeout = millis();
+  while (client.available() == 0) {
+    if (millis() - timeout > 5000) {
+      Serial.println(">>> Client Timeout !");
+      client.stop();
+      return;
+    }
+  }
+
+  Serial.println();
+  Serial.println("closing connection");
+}
+
 void setup() {
   pinMode(2, INPUT);
   microgear.on(MESSAGE, onMsghandler);
@@ -257,88 +280,85 @@ void setup() {
 
 void loop() {
 
-  if (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    WiFi.begin(ssid, password);
-    Serial.print("Connecting to ");
-    Serial.print(ssid);
-    Serial.println();
-    int RETRY_CONNECTION = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-      if (RETRY_CONNECTION == 30) {
-        Serial.print(".");
-        RETRY_CONNECTION = 0;
+  if (Esp.getFreeHeap() >= 32000) {
+
+    if (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      WiFi.begin(ssid, password);
+      Serial.print("Connecting to ");
+      Serial.print(ssid);
+      Serial.println();
+      int RETRY_CONNECTION = 0;
+      while (WiFi.status() != WL_CONNECTED) {
+        if (RETRY_CONNECTION == 30) {
+          Serial.print(".");
+          RETRY_CONNECTION = 0;
+        }
+        delay(50);
+        RETRY_CONNECTION++;
       }
-      delay(50);
-      RETRY_CONNECTION++;
-    }
-    Serial.println();
-    Serial.println("WiFi connected");
-  } else {
-
-    if (microgear.connected()) {
-
-      if (state_connect == 0) {
-        Serial.println("Microgear Connected");
-        state_connect = 1;
-      }
-
-      microgear.loop();
-
-      if (timer >= 1000) {
-        microgear.chat(html_alias, json1);
-        Serial.print("heap : ");
-        Serial.println(Esp.getFreeHeap());
-        json1 = "\0";
-        timer = 0;
-      } else {
-        process_realtime();
-      }
-
+      Serial.println();
+      Serial.println("WiFi connected");
     } else {
 
-      Serial.println("connection lost, reconnect...");
-
-      if (timer >= 5000) {
-
-        // Send data lost connect to database
-        if (!client.connect(host, httpPort)) {
-          Serial.println("connection failed");
-          return;
-        }
-
-        String url = "/laravel/public/device_lost_connect/";
-        url += ALIAS;
-
-        Serial.print("Requesting URL: ");
-        Serial.println(url);
-
-        client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-                     "Host: " + host + "\r\n" +
-                     "Connection: close\r\n\r\n");
-        unsigned long timeout = millis();
-        while (client.available() == 0) {
-          if (millis() - timeout > 5000) {
-            Serial.println(">>> Client Timeout !");
-            client.stop();
-            return;
-          }
-        }
-
-        Serial.println();
-        Serial.println("closing connection");
-
-        microgear.connect(APPID);
-        timer = 0;
-        state_connect = 0;
+      if (state_send_db == 2) {
+        send_datalogger();
+        state_send_db = 0;
       } else {
-        timer += 100;
+
+        if (microgear.connected()) {
+
+          if (state_connect == 0) {
+            Serial.println("Microgear Connected");
+            state_connect = 1;
+          }
+
+          microgear.loop();
+
+          if (timer >= 1000) {
+            microgear.chat(html_alias, json1);
+            Serial.print("heap : ");
+            Serial.println(Esp.getFreeHeap());
+            json1 = "\0";
+            timer = 0;
+          } else {
+            process_realtime();
+          }
+
+
+
+        } else {
+
+          Serial.println("connection lost, reconnect...");
+
+          if (timer >= 5000) {
+
+            // Send data lost connect to database
+            if (!client.connect(host, httpPort)) {
+              Serial.println("connection failed");
+              state_send_db = 2;
+              //          return;
+            } else {
+              send_datalogger();
+              state_send_db = 0;
+            }
+
+            microgear.connect(APPID);
+            timer = 0;
+            state_connect = 0;
+          } else {
+            timer += 100;
+          }
+
+        }
+
+        delay(1);
       }
 
-    }
+    } // End check wifi connect
 
-    delay(1);
-
+  } else {
+    ESP.restart();
   }
 
 }
